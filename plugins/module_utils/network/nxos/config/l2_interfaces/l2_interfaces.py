@@ -168,9 +168,25 @@ class L2_interfaces(ResourceModule):
             return
 
         if self.state in ("replaced", "overridden"):
+            # Replaced/overridden: make device match want_set exactly
+            # Remove vlans that are in have but not in want
+            vlans_to_remove = have_set - want_set
+            # Add vlans that are in want but not in have
+            vlans_to_add = want_set - have_set
+
+            full_range = set(range(1, 4095))
+            have_is_default_all = {int(v) for v in have_set} == full_range
+            want_ints = {int(v) for v in want_set}
+
             if not want_set and have_set:
+                # Want is empty but have has vlans - remove all
                 self.commands.append("no switchport trunk allowed vlan")
-            elif want_set and want_set != have_set:
+            elif have_is_default_all and want_set and want_ints != full_range:
+                # Device is at the default "all" (1-4094). Narrowing via the
+                # "remove <complement>" form is unreliable when no explicit
+                # "switchport trunk allowed vlan" line exists yet (a plain
+                # default-all trunk). Use the set form instead, which replaces
+                # the whole allowed list in one shot and applies reliably.
                 self.commands.extend(
                     generate_switchport_trunk(
                         "allowed",
@@ -178,6 +194,22 @@ class L2_interfaces(ResourceModule):
                         vlan_list_to_range(sorted(want_set, key=int)),
                     ),
                 )
+            else:
+                if vlans_to_remove:
+                    # Remove excess vlans first
+                    self.commands.append(
+                        f"switchport trunk allowed vlan remove {vlan_list_to_range(sorted(vlans_to_remove, key=int))}",
+                    )
+
+                if vlans_to_add:
+                    # Add missing vlans
+                    self.commands.extend(
+                        generate_switchport_trunk(
+                            "allowed",
+                            True,
+                            vlan_list_to_range(sorted(vlans_to_add, key=int)),
+                        ),
+                    )
 
     def process_list_attrs(self, param):
         if param:

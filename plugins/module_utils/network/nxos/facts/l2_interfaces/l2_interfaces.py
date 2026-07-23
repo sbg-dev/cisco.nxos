@@ -40,7 +40,12 @@ class L2_interfacesFacts(object):
         self.argument_spec = L2_interfacesArgs.argument_spec
 
     def _get_interface_config(self, connection):
-        return connection.get("show running-config | section ^interface")
+        # Use "all" so that default (hidden) lines such as
+        # "switchport mode access" are rendered as well. Without it the
+        # default switchport mode is invisible in the running-config, which
+        # made the resource module believe the mode was unset and caused it
+        # to re-issue "switchport mode access" on every run (non-idempotent).
+        return connection.get("show running-config all | section ^interface")
 
     def _default_for_allowed_vlans(self, parsed_config):
         """Handle default for allowed vlans"""
@@ -56,6 +61,43 @@ class L2_interfacesFacts(object):
                     {},
                 ).get("allowed_vlans_none"):
                     interface["trunk"]["allowed_vlans"] = "1-4094"
+
+    def _strip_default_values(self, parsed_config):
+        """Remove default values that are only visible because the config is
+        gathered with the ``all`` keyword.
+
+        ``show running-config all`` renders otherwise-hidden defaults such as
+        ``switchport access vlan 1`` and ``switchport trunk native vlan 1`` on
+        every interface. These are not real configuration and must not be
+        reported as facts, otherwise ``overridden``/``replaced`` would emit
+        spurious negation commands (e.g. ``no switchport access vlan 1``).
+
+        Note: gathering with ``all`` is required so that the (default) line
+        ``switchport mode access`` is visible and the mode can be detected
+        idempotently.
+        """
+        for interface in parsed_config:
+            mode = interface.get("mode")
+
+            # default access vlan 1 is invisible in a normal running-config
+            access = interface.get("access")
+            if access and str(access.get("vlan")) == "1":
+                interface.pop("access", None)
+
+            # default native vlan 1 is invisible in a normal running-config
+            trunk = interface.get("trunk")
+            if trunk and str(trunk.get("native_vlan")) == "1":
+                trunk.pop("native_vlan", None)
+
+            # trunk parameters are inactive while an interface is in access
+            # mode; they only appear due to ``all`` and would otherwise be
+            # negated by overridden/replaced.
+            if mode != "trunk" and interface.get("trunk"):
+                interface.pop("trunk", None)
+
+            # drop an emptied trunk dict
+            if interface.get("trunk") == {}:
+                interface.pop("trunk", None)
 
     def populate_facts(self, connection, ansible_facts, data=None):
         """Populate the facts for L2_interfaces network resource
@@ -81,6 +123,9 @@ class L2_interfacesFacts(object):
 
         # process defaults for allowed vlan
         self._default_for_allowed_vlans(objs)
+
+        # remove default values that are only present because of "all"
+        self._strip_default_values(objs)
 
         pc_members = get_port_channel_members(data)
         self._module._l2_pc_members = pc_members
