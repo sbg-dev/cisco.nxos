@@ -183,8 +183,9 @@ class Bgp_templates(ResourceModule):
     def _afs_compare(self, want, have):
         for name, wentry in want.items():
             begin = len(self.commands)
-            self._af_compare(want=wentry, have=have.pop(name, {}))
-            if begin != len(self.commands):
+            hentry = have.pop(name, {})
+            self._af_compare(want=wentry, have=hentry)
+            if begin != len(self.commands) or self._needs_update(wentry, hentry):
                 self.commands.insert(begin, self._tmplt.render(wentry, "address_family", False))
         for name, hentry in have.items():
             self.commands.append(self._tmplt.render(hentry, "address_family", True))
@@ -201,6 +202,16 @@ class Bgp_templates(ResourceModule):
                     key = "send_community_%s" % send_comm_val
                     item[key] = True
         self.compare(parsers=self.af_parsers, want=want, have=have)
+
+    def _needs_update(self, want, have) -> bool:
+        """Determine if the have and want entries are different
+        enough to require an update command to be sent.
+
+        :params have: string 
+        :params want: string
+        :returns: True if an update is needed, False otherwise
+        """
+        return want != have
 
     def _list_to_dict(self, data):
         def _build_key(x):
