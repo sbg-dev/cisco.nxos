@@ -89,10 +89,11 @@ class L2_interfacesFacts(object):
             if trunk and str(trunk.get("native_vlan")) == "1":
                 trunk.pop("native_vlan", None)
 
-            # trunk parameters are inactive while an interface is in access
-            # mode; they only appear due to ``all`` and would otherwise be
-            # negated by overridden/replaced.
-            if mode != "trunk" and interface.get("trunk"):
+            # Trunk parameters are inactive when ``show running-config all``
+            # explicitly reports a non-trunk mode. If mode is absent, however,
+            # the input may be a normal running-config or parsed input where
+            # trunk attributes are explicit and must be preserved.
+            if mode is not None and mode != "trunk" and interface.get("trunk"):
                 interface.pop("trunk", None)
 
             # drop an emptied trunk dict
