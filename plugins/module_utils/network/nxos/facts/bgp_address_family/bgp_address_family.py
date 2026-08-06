@@ -108,7 +108,7 @@ class Bgp_address_familyFacts(object):
         :param obj: dict
         :returns: flattened running config
         """
-        data = data.split("\n")
+        data = self._remove_peer_template_config(data.split("\n"))
         in_vrf_cxt = False
         in_nbr_cxt = False
         cur_vrf = {}
@@ -139,3 +139,24 @@ class Bgp_address_familyFacts(object):
                     data[data.index(x)] = prepend + " " + x.strip()
 
         return "\n".join(data)
+
+    @staticmethod
+    def _remove_peer_template_config(data):
+        """Remove peer-template contexts handled by nxos_bgp_templates."""
+        filtered_data = []
+        template_indent = None
+
+        for line in data:
+            cur_indent = len(line) - len(line.lstrip())
+            if template_indent is not None:
+                if not line.strip() or cur_indent > template_indent:
+                    continue
+                template_indent = None
+
+            if line.strip().startswith("template peer"):
+                template_indent = cur_indent
+                continue
+
+            filtered_data.append(line)
+
+        return filtered_data

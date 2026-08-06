@@ -2534,3 +2534,56 @@ class TestNxosBGPAddressFamilyModule(TestNxosModule):
 
         result = self.execute_module(changed=True)
         self.assertEqual(result["commands"], commands)
+
+    def test_nxos_bgp_empty_global_af_not_satisfied_by_peer_template(self):
+        self.get_config.return_value = dedent(
+            """\
+            router bgp 65536
+              template peer TMP-PEER-EVPN
+                address-family l2vpn evpn
+                  send-community
+                  send-community extended
+            """,
+        )
+        set_module_args(
+            dict(
+                config=dict(
+                    as_number="65536",
+                    address_family=[dict(afi="l2vpn", safi="evpn")],
+                ),
+                state="overridden",
+            ),
+            ignore_provider_arg,
+        )
+        commands = [
+            "router bgp 65536",
+            "address-family l2vpn evpn",
+        ]
+
+        result = self.execute_module(changed=True)
+        self.assertEqual(result["commands"], commands)
+
+    def test_nxos_bgp_empty_global_af_with_peer_template_is_idempotent(self):
+        self.get_config.return_value = dedent(
+            """\
+            router bgp 65536
+              address-family l2vpn evpn
+              template peer TMP-PEER-EVPN
+                address-family l2vpn evpn
+                  send-community
+                  send-community extended
+            """,
+        )
+        set_module_args(
+            dict(
+                config=dict(
+                    as_number="65536",
+                    address_family=[dict(afi="l2vpn", safi="evpn")],
+                ),
+                state="overridden",
+            ),
+            ignore_provider_arg,
+        )
+
+        result = self.execute_module(changed=False)
+        self.assertEqual(result["commands"], [])
