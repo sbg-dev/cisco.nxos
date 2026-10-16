@@ -137,23 +137,8 @@ class Interfaces(ResourceModule):
         begin = len(self.commands)
         self.compare(parsers=self.parsers, want=want, have=have)
 
-        # Handle the 'enabled' state separately
-        want_enabled = want.get("enabled")
-        have_enabled = have.get("enabled")
-        if want_enabled is not None:
-            if want_enabled != have_enabled:
-                if want_enabled is True:
-                    self.addcmd(want, "enabled", True)
-                else:
-                    self.addcmd(want, "enabled", False)
-        elif not want and self.state == "overridden":
-            if have_enabled is not None:
-                self.addcmd(have, "enabled", False)
-        elif not want and self.state == "deleted":
-            if have_enabled:
-                self.addcmd(have, "enabled", False)
-
         # Handle the 'mode' state separately
+        mode_begin = len(self.commands)
         want_mode = want.get("mode")
         have_mode = have.get("mode", self.defaults.get("default_mode"))
         if want_mode is not None:
@@ -170,6 +155,18 @@ class Interfaces(ResourceModule):
             if have.get("mode") and have_mode != self.defaults.get("default_mode"):
                 no_cmd = True if self.defaults.get("default_mode") == "layer3" else False
                 self.addcmd(have, "mode", no_cmd)
+
+        # A mode change can change the implicit administrative state. Apply the
+        # requested state after switchport/no switchport even if it matched before.
+        mode_changed = len(self.commands) != mode_begin
+        want_enabled = want.get("enabled")
+        have_enabled = have.get("enabled")
+        if want_enabled is not None:
+            if want_enabled != have_enabled or mode_changed:
+                self.addcmd(want, "enabled", want_enabled)
+        elif not want and self.state in ["overridden", "deleted"]:
+            if have_enabled:
+                self.addcmd(have, "enabled", False)
 
         if len(self.commands) != begin:
             self.commands.insert(begin, self._tmplt.render(want or have, "name", False))
