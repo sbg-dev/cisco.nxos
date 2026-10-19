@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - nxos_interfaces - Read missing administrative states from running configuration including defaults, preventing repeated shutdown/no shutdown commands when NX-OS omits the default state. Preserve explicit states and do not import unrelated defaults.
+  - nxos_interfaces - Apply the desired administrative state after an interface mode change and avoid repeatedly shutting down already disabled interfaces omitted from overridden configuration.

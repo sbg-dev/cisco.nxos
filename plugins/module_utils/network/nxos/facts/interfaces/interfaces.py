@@ -37,6 +37,9 @@ class InterfacesFacts(object):
     def _get_interface_config(self, connection):
         return connection.get("show running-config | section ^interface")
 
+    def _get_interface_config_with_defaults(self, connection):
+        return connection.get("show running-config all | section ^interface")
+
     def populate_facts(self, connection, ansible_facts, data=None):
         """Populate the facts for Interfaces network resource
 
@@ -49,13 +52,35 @@ class InterfacesFacts(object):
         """
         facts = {}
         objs = []
+        from_device = data is None
 
         if not data:
             data = self._get_interface_config(connection)
 
         # parse native config using the Interfaces template
         interfaces_parser = InterfacesTemplate(lines=data.splitlines(), module=self._module)
-        objs = list(interfaces_parser.parse().values())
+        parsed = interfaces_parser.parse()
+        if from_device and any("enabled" not in obj for obj in parsed.values()):
+            # NX-OS omits implicit shutdown/no shutdown. Read the effective state
+            # from the device instead of guessing platform, mode or type defaults.
+            # Only supplement enabled: importing other defaults would change the
+            # removal semantics of replaced/overridden for unrelated attributes.
+            default_lines = self._get_interface_config_with_defaults(connection).splitlines()
+            enabled_parser = InterfacesTemplate(
+                lines=[
+                    line
+                    for line in default_lines
+                    if line.startswith("interface ") or line.strip() in ("shutdown", "no shutdown")
+                ],
+                module=self._module,
+            )
+            enabled_by_name = enabled_parser.parse()
+            for name, obj in parsed.items():
+                enabled = enabled_by_name.get(name, {}).get("enabled")
+                if "enabled" not in obj and enabled is not None:
+                    obj["enabled"] = enabled
+
+        objs = list(parsed.values())
         ansible_facts["ansible_network_resources"].pop("interfaces", None)
         facts = {"interfaces": []}
         params = utils.remove_empties(

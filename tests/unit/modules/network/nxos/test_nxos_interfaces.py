@@ -52,11 +52,20 @@ class TestNxosInterfacesModule(TestNxosModule):
         )
         self.execute_show_command = self.mock_execute_show_command.start()
 
+        self.mock_execute_show_defaults = patch(
+            "ansible_collections.cisco.nxos.plugins.module_utils.network.nxos.facts.interfaces.interfaces."
+            "InterfacesFacts._get_interface_config_with_defaults",
+            return_value="",
+        )
+        self.mock_execute_show_defaults.start()
+        self.addCleanup(self.mock_execute_show_defaults.stop)
+
         self.mock_exec_get_defaults_command = patch(
             "ansible_collections.cisco.nxos.plugins.module_utils.network.nxos.config.interfaces.interfaces."
             "Interfaces.get_interface_defaults",
         )
         self.exec_get_defaults = self.mock_exec_get_defaults_command.start()
+        self.addCleanup(self.mock_exec_get_defaults_command.stop)
         self.maxDiff = None
 
     def tearDown(self):
